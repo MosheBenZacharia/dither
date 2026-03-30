@@ -1,6 +1,6 @@
 # Dither Playground
 
-A fork of the original [Dither Playground](https://github.com/emilkowalski/dither) by [Emil Kowalski](https://x.com/emilkowalski_), adding color support, idle animation, and other enhancements.
+A fork of a fork -- originally built by [Emil Kowalski](https://x.com/emilkowalski), forked by [lenxism](https://github.com/lenxism/dither), and forked again here with color support, idle animation, and other enhancements.
 
 ![Dither Playground Demo](public/demo.gif)
 
@@ -26,7 +26,7 @@ Next.js 15 &middot; React 19 &middot; Tailwind CSS v4 &middot; Motion &middot; D
 
 ## Credits
 
-Forked from the dithered particle effect [Emil Kowalski](https://x.com/emilkowalski_) built for [linear.app/next](https://linear.app/next). See his [original tweet](https://x.com/emilkowalski/status/2036778116748542220).
+Based on the dithered particle effect [Emil Kowalski](https://x.com/emilkowalski) built for [linear.app/next](https://linear.app/next). See his [original tweet](https://x.com/emilkowalski/status/2036778116748542220). Forked from [lenxism/dither](https://github.com/lenxism/dither).
 
 ## License
 
