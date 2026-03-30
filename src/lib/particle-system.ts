@@ -12,6 +12,9 @@ export interface DotSystem {
   dy: Float32Array;
   brightness: Float32Array;
   tint: Float32Array;
+  r: Uint8Array;
+  g: Uint8Array;
+  b: Uint8Array;
   size: number;
 }
 
@@ -30,7 +33,9 @@ export function createDotSystem(
   scaleFactor: number,
   dotScale: number,
   offsetX: number,
-  offsetY: number
+  offsetY: number,
+  colors?: Uint8Array,
+  gridW?: number
 ): DotSystem {
   const count = points.length / 2;
   const baseX = new Float32Array(count);
@@ -39,15 +44,28 @@ export function createDotSystem(
   const dy = new Float32Array(count);
   const brightness = new Float32Array(count);
   const tint = new Float32Array(count);
+  const r = new Uint8Array(count);
+  const g = new Uint8Array(count);
+  const b = new Uint8Array(count);
 
   for (let i = 0; i < count; i++) {
     baseX[i] = offsetX + points[i * 2] * scaleFactor;
     baseY[i] = offsetY + points[i * 2 + 1] * scaleFactor;
     brightness[i] = 1;
     tint[i] = 1;
+    if (colors && gridW) {
+      const px = Math.round(points[i * 2]);
+      const py = Math.round(points[i * 2 + 1]);
+      const ci = (py * gridW + px) * 3;
+      r[i] = colors[ci];
+      g[i] = colors[ci + 1];
+      b[i] = colors[ci + 2];
+    } else {
+      r[i] = 138; g[i] = 143; b[i] = 152;
+    }
   }
 
-  return { count, baseX, baseY, dx, dy, brightness, tint, size: scaleFactor * dotScale };
+  return { count, baseX, baseY, dx, dy, brightness, tint, r, g, b, size: scaleFactor * dotScale };
 }
 
 export function updateDots(
@@ -131,39 +149,66 @@ export function renderDots(
   invert: boolean,
   canvasW: number,
   canvasH: number,
-  dpr: number
+  dpr: number,
+  colorMode = false
 ): void {
   ctx.clearRect(0, 0, canvasW * dpr, canvasH * dpr);
-
-  const r = invert ? 0 : 138;
-  const g = invert ? 0 : 143;
-  const b = invert ? 0 : 152;
-
-  const buckets: number[][] = new Array(126);
-  for (let z = 0; z < 126; z++) buckets[z] = [];
-
-  for (let i = 0; i < sys.count; i++) {
-    const bucket = 6 * Math.round(20 * sys.brightness[i]) + Math.round(5 * sys.tint[i]);
-    const clamped = Math.max(0, Math.min(125, bucket));
-    buckets[clamped].push(i);
-  }
 
   const size = sys.size * dpr;
   const pad = 0.25 * dpr;
   const padSize = 0.5 * dpr;
 
-  for (let z = 0; z < 126; z++) {
-    const ids = buckets[z];
-    if (ids.length === 0) continue;
+  if (colorMode) {
+    // Group particles by quantized color + alpha bucket to minimize fillStyle changes
+    const colorBuckets = new Map<number, number[]>();
+    for (let i = 0; i < sys.count; i++) {
+      const alphaBucket = Math.min(20, Math.round(sys.brightness[i] * 20));
+      // 5 bits per channel + 5 bits alpha = 20 bits total
+      const key = (sys.r[i] >> 3) | ((sys.g[i] >> 3) << 5) | ((sys.b[i] >> 3) << 10) | (alphaBucket << 15);
+      let bucket = colorBuckets.get(key);
+      if (!bucket) { bucket = []; colorBuckets.set(key, bucket); }
+      bucket.push(i);
+    }
+    for (const [key, ids] of colorBuckets) {
+      const cr = (key & 0x1f) << 3;
+      const cg = ((key >> 5) & 0x1f) << 3;
+      const cb = ((key >> 10) & 0x1f) << 3;
+      const alpha = ((key >> 15) & 0x1f) / 20;
+      ctx.fillStyle = `rgba(${cr},${cg},${cb},${alpha})`;
+      for (let j = 0; j < ids.length; j++) {
+        const i = ids[j];
+        const rx = (sys.baseX[i] + sys.dx[i]) * dpr;
+        const ry = (sys.baseY[i] + sys.dy[i]) * dpr;
+        ctx.fillRect(rx - pad, ry - pad, size + padSize, size + padSize);
+      }
+    }
+  } else {
+    const r = 30;
+    const g = 30;
+    const b = 30;
 
-    const alpha = Math.floor(z / 6) / 20;
-    ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
+    const buckets: number[][] = new Array(126);
+    for (let z = 0; z < 126; z++) buckets[z] = [];
 
-    for (let j = 0; j < ids.length; j++) {
-      const i = ids[j];
-      const rx = (sys.baseX[i] + sys.dx[i]) * dpr;
-      const ry = (sys.baseY[i] + sys.dy[i]) * dpr;
-      ctx.fillRect(rx - pad, ry - pad, size + padSize, size + padSize);
+    for (let i = 0; i < sys.count; i++) {
+      const bucket = 6 * Math.round(20 * sys.brightness[i]) + Math.round(5 * sys.tint[i]);
+      const clamped = Math.max(0, Math.min(125, bucket));
+      buckets[clamped].push(i);
+    }
+
+    for (let z = 0; z < 126; z++) {
+      const ids = buckets[z];
+      if (ids.length === 0) continue;
+
+      const alpha = Math.floor(z / 6) / 20;
+      ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
+
+      for (let j = 0; j < ids.length; j++) {
+        const i = ids[j];
+        const rx = (sys.baseX[i] + sys.dx[i]) * dpr;
+        const ry = (sys.baseY[i] + sys.dy[i]) * dpr;
+        ctx.fillRect(rx - pad, ry - pad, size + padSize, size + padSize);
+      }
     }
   }
 }

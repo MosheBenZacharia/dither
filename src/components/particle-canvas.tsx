@@ -26,7 +26,9 @@ interface ParticleCanvasProps {
   onLogoPresetChange: (src: string) => void;
 }
 
-const GRID_SIZE = 205;
+const GRID_SIZE = 300;
+const IDLE_DELAY = 3500; // ms before idle orbit starts
+const IDLE_SPEED = 0.35; // radians/sec (~18s per full orbit)
 
 const LOGO_PRESETS = {
   linear: "/linear-app-icon.png",
@@ -47,6 +49,16 @@ export default function ParticleCanvas({
   const blueNoiseRef = useRef<Uint8Array | null>(null);
   const prevConfigRef = useRef<string>("");
   const gridDimsRef = useRef({ w: GRID_SIZE, h: GRID_SIZE });
+  const colorRef = useRef(false);
+
+  // Idle orbit state
+  const imageBoundsRef = useRef({ cx: 0, cy: 0, hw: 0, hh: 0 });
+  const idleActiveRef = useRef(false);
+  const idleAngleRef = useRef(Math.PI * 1.5); // start at top of image
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastTickTimeRef = useRef(0);
+  const startLoopRef = useRef<() => void>(() => {});
+
   const isMobile = useIsMobile();
 
   const params = useDialKit("Dither Playground", {
@@ -58,6 +70,7 @@ export default function ParticleCanvas({
     scale: [0.35, 0.1, 2.0, 0.05],
     dotScale: [1, 0.5, 10, 0.5],
     invert: true,
+    color: true,
 
     logo: {
       type: "select",
@@ -93,8 +106,11 @@ export default function ParticleCanvas({
   });
 
   const algorithm = params.algorithm as DitherAlgorithm;
+  colorRef.current = params.color;
 
+  const isMountedRef = useRef(false);
   useEffect(() => {
+    if (!isMountedRef.current) { isMountedRef.current = true; return; }
     const key = params.logo as keyof typeof LOGO_PRESETS;
     const path = LOGO_PRESETS[key] ?? LOGO_PRESETS.linear;
     onLogoPresetChange(path);
@@ -116,6 +132,21 @@ export default function ParticleCanvas({
         return;
       }
 
+      const now = performance.now();
+      const dt = lastTickTimeRef.current > 0
+        ? Math.min((now - lastTickTimeRef.current) / 1000, 0.05)
+        : 0.016;
+      lastTickTimeRef.current = now;
+
+      // Idle orbit: simulate mouse moving clockwise around the image edge
+      if (idleActiveRef.current) {
+        idleAngleRef.current += IDLE_SPEED * dt;
+        const { cx, cy, hw, hh } = imageBoundsRef.current;
+        mouseRef.current.x = cx + hw * Math.cos(idleAngleRef.current);
+        mouseRef.current.y = cy + hh * Math.sin(idleAngleRef.current);
+        mouseRef.current.active = true;
+      }
+
       const rect = canvas.getBoundingClientRect();
       const needsMore = updateDots(
         sys,
@@ -123,20 +154,39 @@ export default function ParticleCanvas({
         mouseRef.current.y,
         mouseRef.current.active,
         shockwavesRef.current,
-        performance.now()
+        now
       );
 
-      renderDots(ctx, sys, params.invert, rect.width, rect.height, dpr);
+      renderDots(ctx, sys, params.invert, rect.width, rect.height, dpr, params.color);
 
-      if (needsMore) {
+      if (needsMore || idleActiveRef.current) {
         animFrameRef.current = requestAnimationFrame(tick);
       } else {
         runningRef.current = false;
+        lastTickTimeRef.current = 0;
       }
     };
 
     animFrameRef.current = requestAnimationFrame(tick);
-  }, [params.invert]);
+  }, [params.invert, params.color]);
+
+  // Keep startLoopRef current so idle timer always calls the latest version
+  useEffect(() => {
+    startLoopRef.current = startLoop;
+  }, [startLoop]);
+
+  const scheduleIdle = useCallback(() => {
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    idleTimerRef.current = setTimeout(() => {
+      idleActiveRef.current = true;
+      startLoopRef.current();
+    }, IDLE_DELAY);
+  }, []);
+
+  const cancelIdle = useCallback(() => {
+    if (idleTimerRef.current) { clearTimeout(idleTimerRef.current); idleTimerRef.current = null; }
+    idleActiveRef.current = false;
+  }, []);
 
   const rebuildParticles = useCallback(
     async (src: string) => {
@@ -192,12 +242,20 @@ export default function ParticleCanvas({
       const ox = Math.round((rect.width - gw * s) / 2);
       const oy = Math.round((rect.height - gh * s) / 2);
 
+      imageBoundsRef.current = {
+        cx: ox + (gw * s) / 2,
+        cy: oy + (gh * s) / 2,
+        hw: (gw * s) / 2,
+        hh: (gh * s) / 2,
+      };
+
       const dotScale = isMobile ? params.dotScale * 0.8 : params.dotScale;
 
-      systemRef.current = createDotSystem(positions, s, dotScale, ox, oy);
+      systemRef.current = createDotSystem(positions, s, dotScale, ox, oy, processed.colors, processed.width);
       startLoop();
+      scheduleIdle();
     },
-    [algorithm, params.scale, params.dotScale, params.image.contrast, params.image.gamma, params.image.blur, params.image.threshold, params.image.highlightsCompression, params.dither.errorStrength, params.dither.serpentine, params.shape.cornerRadius, params.invert, isMobile, startLoop]
+    [algorithm, params.scale, params.dotScale, params.image.contrast, params.image.gamma, params.image.blur, params.image.threshold, params.image.highlightsCompression, params.dither.errorStrength, params.dither.serpentine, params.shape.cornerRadius, params.invert, isMobile, startLoop, scheduleIdle]
   );
 
   useEffect(() => {
@@ -223,7 +281,7 @@ export default function ParticleCanvas({
       canvas.width = rect.width * dpr;
       canvas.height = rect.height * dpr;
       const sys = systemRef.current;
-      if (sys) renderDots(ctx, sys, params.invert, rect.width, rect.height, dpr);
+      if (sys) renderDots(ctx, sys, params.invert, rect.width, rect.height, dpr, colorRef.current);
 
       const w = Math.round(rect.width);
       const h = Math.round(rect.height);
@@ -241,9 +299,27 @@ export default function ParticleCanvas({
 
     const handlePointerMove = (e: PointerEvent) => {
       const rect = canvas.getBoundingClientRect();
-      mouseRef.current.x = e.clientX - rect.left;
-      mouseRef.current.y = e.clientY - rect.top;
-      mouseRef.current.active = true;
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      mouseRef.current.x = mx;
+      mouseRef.current.y = my;
+
+      // Only cancel idle and activate mouse when close enough to the image to affect particles
+      const { cx, cy, hw, hh } = imageBoundsRef.current;
+      const MOUSE_RADIUS = 100;
+      const nearX = Math.max(0, Math.abs(mx - cx) - hw);
+      const nearY = Math.max(0, Math.abs(my - cy) - hh);
+      const distToImage = Math.sqrt(nearX * nearX + nearY * nearY);
+
+      if (distToImage < MOUSE_RADIUS) {
+        cancelIdle();
+        mouseRef.current.active = true;
+      } else {
+        mouseRef.current.active = false;
+        if (!idleActiveRef.current && !idleTimerRef.current) {
+          scheduleIdle();
+        }
+      }
       startLoop();
     };
 
@@ -251,6 +327,7 @@ export default function ParticleCanvas({
       if (e.pointerType !== "mouse") return;
       mouseRef.current.active = false;
       startLoop();
+      if (!idleActiveRef.current) scheduleIdle();
     };
 
     const handlePointerCancel = () => {
@@ -279,6 +356,7 @@ export default function ParticleCanvas({
     return () => {
       cancelAnimationFrame(animFrameRef.current);
       runningRef.current = false;
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
       if (resizeTimer) clearTimeout(resizeTimer);
       resizeObserver.disconnect();
       canvas.removeEventListener("pointermove", handlePointerMove);
@@ -286,9 +364,14 @@ export default function ParticleCanvas({
       canvas.removeEventListener("pointercancel", handlePointerCancel);
       canvas.removeEventListener("pointerup", handlePointerUp);
     };
-  }, [params.invert, startLoop, rebuildParticles, imageSrc]);
+  }, [params.invert, startLoop, rebuildParticles, imageSrc, scheduleIdle, cancelIdle]);
 
-  const bg = params.invert ? "#ffffff" : "#0a0a0a";
+  // Re-render when color mode toggles without rebuilding particles
+  useEffect(() => {
+    startLoop();
+  }, [params.color, startLoop]);
+
+  const bg = "#FAFAF8";
 
   useEffect(() => {
     document.documentElement.style.background = bg;

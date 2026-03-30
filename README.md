@@ -1,8 +1,15 @@
 # Dither Playground
 
-Upload an image and watch it come alive as interactive dithered particles. Hover to push them, click to explode.
+A fork of the original [Dither Playground](https://github.com/emilkowalski/dither) by [Emil Kowalski](https://x.com/emilkowalski_), adding color support, idle animation, and other enhancements.
 
-Supports Floyd-Steinberg, Bayer, and blue-noise dithering with a live control panel to tweak everything in real time.
+![Dither Playground Demo](public/demo.gif)
+
+## What's new in this fork
+
+- **Color mode** -- particles retain their original image colors instead of rendering as monochrome gray
+- **Idle orbit animation** -- a subtle simulated mouse orbits the image edge when no interaction is detected, hinting that the image is interactive
+- **Increased particle density** -- higher resolution grid for sharper detail
+- **Decoupled density inversion** -- inverted particle density (dark areas = more particles) works independently of color/background settings
 
 ## Running locally
 
@@ -17,15 +24,9 @@ Opens at [localhost:3000](http://localhost:3000).
 
 Next.js 15 &middot; React 19 &middot; Tailwind CSS v4 &middot; Motion &middot; DialKit
 
-## Issues & contributions
-
-Bug reports and ideas are welcome -- open an issue.
-
-Pull requests are not being reviewed at this time.
-
 ## Credits
 
-Inspired by the dithered particle effect [Emil Kowalski](https://x.com/emilkowalski_) built for [linear.app/next](https://linear.app/next). See his [original tweet](https://x.com/emilkowalski/status/2036778116748542220).
+Forked from the dithered particle effect [Emil Kowalski](https://x.com/emilkowalski_) built for [linear.app/next](https://linear.app/next). See his [original tweet](https://x.com/emilkowalski/status/2036778116748542220).
 
 ## License
 

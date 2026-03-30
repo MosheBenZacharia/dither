@@ -4,7 +4,7 @@ import { useRef, useCallback, useState } from "react";
 import ParticleCanvas from "@/components/particle-canvas";
 
 export default function Home() {
-  const [imageSrc, setImageSrc] = useState("/linear-app-icon.png");
+  const [imageSrc, setImageSrc] = useState("/propic.png");
   const inputRef = useRef<HTMLInputElement>(null);
   const blobUrlRef = useRef<string | null>(null);
 

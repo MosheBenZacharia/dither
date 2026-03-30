@@ -1,5 +1,6 @@
 export interface ProcessedImage {
   grayscale: Uint8Array;
+  colors: Uint8Array; // RGB per pixel, 3 bytes each
   alpha: Uint8Array;
   width: number;
   height: number;
@@ -79,6 +80,7 @@ export function processImage(
   const sampledW = Math.ceil(outW / scale);
   const sampledH = Math.ceil(outH / scale);
   const grayscale = new Uint8Array(sampledW * sampledH);
+  const colors = new Uint8Array(sampledW * sampledH * 3);
   const alpha = new Uint8Array(sampledW * sampledH);
 
   const contrastFactor = (259 * (contrast + 255)) / (255 * (259 - contrast));
@@ -99,11 +101,20 @@ export function processImage(
       // Un-premultiply the blurred RGB so edge pixels retain their true color.
       // The separate alpha mask handles transparency cutoff in the dither step.
       let luma: number;
+      let ur: number, ug: number, ub: number;
       if (blurredAlpha > 0.01) {
-        luma = (0.299 * r + 0.587 * g + 0.114 * b) / blurredAlpha;
+        ur = Math.min(255, Math.round(r / blurredAlpha));
+        ug = Math.min(255, Math.round(g / blurredAlpha));
+        ub = Math.min(255, Math.round(b / blurredAlpha));
+        luma = 0.299 * ur + 0.587 * ug + 0.114 * ub;
       } else {
+        ur = ug = ub = 0;
         luma = 0;
       }
+      const colorIdx = (sy * sampledW + sx) * 3;
+      colors[colorIdx] = ur;
+      colors[colorIdx + 1] = ug;
+      colors[colorIdx + 2] = ub;
 
       if (contrast !== 0) {
         luma = contrastFactor * (luma - 128) + 128;
@@ -125,5 +136,5 @@ export function processImage(
     }
   }
 
-  return { grayscale, alpha, width: sampledW, height: sampledH };
+  return { grayscale, colors, alpha, width: sampledW, height: sampledH };
 }
