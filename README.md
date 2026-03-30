@@ -13,6 +13,8 @@ A fork of a fork -- originally built by [Emil Kowalski](https://x.com/emilkowals
 
 ## Running locally
 
+Requires **Node.js >= 20** (`@tailwindcss/oxide` native bindings won't install on older versions).
+
 ```bash
 npm install
 npm run dev
